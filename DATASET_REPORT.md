@@ -675,39 +675,63 @@ Le redressement de ce volume de données a confronté l'équipe à plusieurs ver
 
 ---
 
-## 4.12📊 Statistiques du Dataset Final
+## 4.12 📊 Statistiques du Dataset Final
 
 ### Répartition générale du type d'écriture (Script)
-Le traitement de la colonne linguistique montre une écriture massivement dominée par l'alphabet arabe, reflétant les habitudes de communication sur les espaces web marocains ciblés :
-* **Script Arabe (`arabic`) :** 19 762 lignes | 83,72 %
-* **Script Latin/Arabizi (`latin`) :** 3 844 lignes | 16,28 %
+
+Le traitement de la colonne linguistique montre une écriture massivement dominée 
+par l'alphabet arabe, reflétant les habitudes de communication sur les espaces 
+web marocains ciblés :
+
+- **Script Arabe (`arabic`) :** 19 762 lignes | 83,72 %
+- **Script Latin/Arabizi (`latin`) :** 3 844 lignes | 16,28 %
+
+---
 
 ### Distribution finale des classes (Labels validés)
-À l'issue de la phase de réconciliation et du raffinement de la classe résiduelle *Nonsense* en intentions directes, la structure sémantique finale de notre dataset de **23 606 lignes** se répartit comme suit :
 
-| Catégorie / Label Studio | Nombre d'exemples | Proportion (%) | Nature du Signal |
-| :--- | :---: | :---: | :--- |
-| **Opinion** | 3 772 | 15,98 % | Intention / Comportement |
-| **Politics_Society** | 3 711 | 15,72 % | Thématique Métier |
-| **Soutien/Encouragement** | 3 539 | 14,99 % | Intention / Comportement |
-| **Sports** | 3 027 | 12,82 % | Thématique Métier |
-| **Religion** | 2 426 | 10,28 % | Thématique Métier |
-| **Business_Economy** | 2 176 | 9,22 % | Thématique Métier |
-| **Health_Science** | 2 034 | 8,62 % | Thématique Métier |
-| **Cuisine** | 1 803 | 7,64 % | Thématique Métier |
-| **Question** | 469 | 1,99 % | Intention / Comportement |
-| **Inclassable/Bruit** | 458 | 1,94 % | Résiduel Qualifié |
-| **Publicité/Spam** | 191 | 0,81 % | Résiduel Qualifié |
-| **TOTAL** | **23 606** | **100,00 %** | **—** |
+À l'issue de la phase d'annotation semi-automatique par Gemini 2.0 Flash et de 
+la validation manuelle via Label Studio, la structure finale de notre dataset 
+de **23 606 lignes** se répartit sur **7 classes** comme suit :
 
-### ⚖️ Diagnostic du Déséquilibre des Classes (Imbalance Analysis)
-Si l'on écarte les classes purement techniques (Bruit, Spam, Question) dont la faible proportion est naturelle et souhaitable, l'analyse du cœur thématique révèle un excellent équilibre :
-* **Classe thématique majoritaire :** `Opinion` (3 772 exemples)
-* **Classe thématique minoritaire :** `Cuisine` (1 803 exemples)
-* **Ratio de déséquilibre effectif (Imbalance Ratio Thématique) :** **2,09x**
+| Classe | Nombre d'exemples | Proportion (%) |
+|---|---|---|
+| **Inclassable** | 8 430 | 35,71 % |
+| **Politics_Society** | 3 711 | 15,72 % |
+| **Sports_Fitness** | 3 027 | 12,82 % |
+| **Religion** | 2 426 | 10,28 % |
+| **Business_Economy** | 2 176 | 9,22 % |
+| **Health_Science** | 2 034 | 8,62 % |
+| **Food_Cuisine** | 1 803 | 7,64 % |
+| **TOTAL** | **23 606** | **100,00 %** |
 
-*Conclusion du diagnostic :* Le dataset ne souffre d'aucun déséquilibre sévère sur ses thématiques principales. L'écart minimal de 2x entre la classe la plus haute et la plus basse démontre une collecte bien proportionnée lors de l'étape de scraping initial, évitant ainsi le recours à des techniques artificielles de rééchantillonnage (type SMOTE).
+> **Note :** La classe `Inclassable` regroupe l'ensemble des commentaires sans 
+valeur thématique identifiable : opinions personnelles, encouragements, questions 
+génériques, spam et bruit linguistique. Cette consolidation en une classe unique 
+améliore la séparabilité des classes thématiques lors de la modélisation.
 
+---
+
+### ⚖️ Diagnostic du Déséquilibre des Classes
+
+| Indicateur | Valeur |
+|---|---|
+| Classe majoritaire globale | `Inclassable` (8 430 exemples) |
+| Classe thématique majoritaire | `Politics_Society` (3 711 exemples) |
+| Classe thématique minoritaire | `Food_Cuisine` (1 803 exemples) |
+| **Ratio thématique (sans Inclassable)** | **2,09x** ✅ |
+| **Ratio global (avec Inclassable)** | **4,67x** ⚠️ naturel et attendu |
+
+**Conclusion du diagnostic :** Le dataset ne souffre d'aucun déséquilibre sévère 
+sur ses 6 classes thématiques. Le ratio de 2,09x entre `Politics_Society` et 
+`Food_Cuisine` est largement en dessous du seuil critique de 10x fixé dans la 
+littérature NLP. La proportion élevée de la classe `Inclassable` (35,71%) est 
+un reflet fidèle de la réalité des commentaires YouTube — la majorité des 
+interactions sociales ne portent pas de contenu thématique dense.
+
+**Traitements appliqués lors de la modélisation :**
+- `class_weight='balanced'` sur tous les classifieurs scikit-learn
+- Aucun sur-échantillonnage nécessaire sur les classes thématiques (ratio ≤ 2,09x)
 ---
 
 ## 4.13 ⚠️ Limites
@@ -720,7 +744,7 @@ L’analyse approfondie des erreurs de notre pipeline met en évidence trois bar
 
 ---
 
-## 4.11 🚀 Améliorations
+## 4.14 🚀 Améliorations
 
 Pour pallier les limites observées et faire progresser ce projet vers une version industrielle, trois axes d'améliorations prioritaires sont préconisés :
 
