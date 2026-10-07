@@ -10,6 +10,14 @@ Python | DarijaBERT | FastAPI | Streamlit | Scikit-learn | W&B
 - Meilleur modèle : Linear SVC + TF-IDF char 2-4grams | F1-macro = 0.74
 - Annotation : Google Gemini + validation manuelle Label Studio (20% correction)
 
+## ⚠️ Modèles requis
+
+Télécharger les fichiers .pkl depuis Google Drive :
+[Télécharger les modèles]([lien_drive](https://drive.google.com/drive/folders/18Gg2DhWUUNJexjmTW5PrJbqhQLXI3DFb?usp=sharing))
+
+Placer dans : app/models/ 
+  
+
 ## Lancer l'API
 pip install -r requirements.txt
 uvicorn app/main:app --reload
