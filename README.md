@@ -13,7 +13,7 @@ Python | DarijaBERT | FastAPI | Streamlit | Scikit-learn | W&B
 ## ⚠️ Modèles requis
 
 Télécharger les fichiers .pkl depuis Google Drive :
-[Télécharger les modèles]([lien_drive](https://drive.google.com/drive/folders/18Gg2DhWUUNJexjmTW5PrJbqhQLXI3DFb?usp=sharing))
+((https://drive.google.com/drive/folders/18Gg2DhWUUNJexjmTW5PrJbqhQLXI3DFb?usp=sharing))
 
 Placer dans : app/models/ 
   
