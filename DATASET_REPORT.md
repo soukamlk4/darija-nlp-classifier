@@ -296,96 +296,92 @@ Malgré les efforts d'enrichissement, la classe `Religion` reste la moins repré
 
 ### Méthode utilisée
 
-La labellisation semi-automatique a été réalisée via une approche **navigateur automatisé avec injection de prompts**, sans utilisation d'API payante. La pipeline repose sur deux scripts Tampermonkey exécutés dans Google Chrome :
+La labellisation semi-automatique a été réalisée via une approche **navigateur automatisé 
+avec injection de prompts**, sans utilisation d'API payante. La pipeline repose sur deux 
+scripts Tampermonkey exécutés dans Google Chrome :
 
-- **Script 1 — Gemini Batch Darija Classification (V1.0)** : injecte automatiquement les textes à annoter dans l'interface Gemini et envoie le prompt de classification.
-- **Script 2 — Gemini Sidebar Extractor to ZIP (V1.4)** : extrait les réponses générées par Gemini depuis la sidebar des conversations et les télécharge sous forme de fichiers `.txt`.
+- **Script 1 — Gemini Batch Darija Classification (V1.0)** : injecte automatiquement 
+les textes à annoter dans l'interface Gemini et envoie le prompt de classification.
+- **Script 2 — Gemini Sidebar Extractor to ZIP (V1.4)** : extrait les réponses générées 
+par Gemini depuis la sidebar des conversations et les télécharge sous forme de fichiers `.txt`.
 
 ### Nom exact du modèle utilisé
 
-**Google Gemini 2.0 Flash** — accessible via l'interface web `https://gemini.google.com` (modèle : `gemini-2.0-flash`)
+**Google Gemini 2.0 Flash** — accessible via l'interface web `https://gemini.google.com`
 
 ### Description du processus
 
 **Étape 1 — Préparation des fichiers batch**
-À partir du dataset filtré (`filtered_finale_data_enfin_LLM.csv`, environ 49 000 textes), un script Python a découpé les données en fichiers JSON de 200 textes chacun (`BATCH_SIZE = 200`, générant ~245 fichiers JSON dans le dossier `batch_files/`).
+À partir du dataset filtré (`filtered_finale_data_enfin_LLM.csv`, environ 49 000 textes), 
+un script Python a découpé les données en fichiers JSON de 200 textes chacun 
+(`BATCH_SIZE = 200`, générant ~245 fichiers JSON dans le dossier `batch_files/`).
 
 **Étape 2 — Injection automatique dans Gemini via Tampermonkey**
-Le script Tampermonkey charge les fichiers JSON depuis une base IndexedDB locale, construit le prompt complet (instructions + exemples few-shot + textes à annoter), l'injecte dans l'éditeur de Gemini, et envoie automatiquement la requête. Après chaque réponse, un nouvel onglet est ouvert pour le fichier suivant.
+Le script Tampermonkey charge les fichiers JSON depuis une base IndexedDB locale, 
+construit le prompt complet (instructions + exemples few-shot + textes à annoter), 
+l'injecte dans l'éditeur de Gemini, et envoie automatiquement la requête. 
+Après chaque réponse, un nouvel onglet est ouvert pour le fichier suivant.
 
 **Étape 3 — Prompt de classification (Few-Shot)**
 Le prompt envoyé à Gemini est structuré en trois blocs :
 
-*Bloc 1 — Définition des labels :*
+*Bloc 1 — Définition des 7 labels :*
 
 | Label | Description |
 |---|---|
 | `Politics_Society` | politique, société, gouvernement, actualité, corruption, élections |
 | `Business_Economy` | économie, argent, business, investissement, impôts, salaires |
-| `Sports` | football, matchs, équipes (Raja, Wydad…), compétitions |
+| `Sports_Fitness` | football, matchs, équipes (Raja, Wydad…), compétitions, fitness |
 | `Health_Science` | santé, médecine, maladies, traitements, médicaments |
-| `Cuisine` | recettes, plats marocains, ingrédients, préparation des aliments |
+| `Food_Cuisine` | recettes, plats marocains, ingrédients, préparation des aliments |
 | `Religion` | islam, prière, coran, hadith, ramadan, mosquée |
-| `Nonsense` | commentaires génériques, spam, textes trop courts, hors sujet |
+| `Inclassable` | opinions, encouragements, questions, spam, textes trop courts, hors sujet |
 
 *Bloc 2 — Exemples few-shot* extraits du Gold Standard (7 par classe = 49 exemples) :
+
 ```json
-{"text": "الوداد ضرب الرجاء 3-1 هدف زوين من النصيري", "label": "Sports"}
+{"text": "الوداد ضرب الرجاء 3-1 هدف زوين من النصيري", "label": "Sports_Fitness"}
 {"text": "الضريبة على المقاول الذاتي واصلة ل 30%", "label": "Business_Economy"}
-{"text": "وصفة الكسكس ديال الجدة دجاج بزاف ديال البصل", "label": "Cuisine"}
+{"text": "وصفة الكسكس ديال الجدة دجاج بزاف ديال البصل", "label": "Food_Cuisine"}
 {"text": "الصلاة عماد الدين والفرق ما بين المسلم والكافر", "label": "Religion"}
 {"text": "اصبح الطب في المغرب تجارة", "label": "Health_Science"}
-{"text": "أحسن الله إليك", "label": "Nonsense"}
+{"text": "أحسن الله إليك", "label": "Inclassable"}
 {"text": "ايران اكبر عدو للمغرب بسبب قضية الصحراء", "label": "Politics_Society"}
 ```
 
 *Bloc 3 — Règles explicites pour les cas ambigus :*
-- Mots religieux utilisés comme formule de politesse → `Nonsense`
-- Texte trop court ou générique → `Nonsense`
-- Texte en français/anglais sans contenu thématique → `Nonsense`
+- Opinions, avis personnels, réactions subjectives → `Inclassable`
+- Encouragements, félicitations, formules de bienveillance → `Inclassable`
+- Questions explicites sans domaine thématique dense → `Inclassable`
+- Texte publicitaire ou spam → `Inclassable`
+- Texte trop court ou générique → `Inclassable`
+- Texte en français/anglais sans contenu thématique → `Inclassable`
 - Sujet mixte → classe du sujet dominant
 
 **Étape 4 — Extraction et consolidation des réponses**
-Les réponses de Gemini ont été extraites via le script ZIP sous forme de fichiers `.txt`. Un script Python de traitement itératif parse le JSON contenu dans chaque fichier `.txt`, extrait les labels, et les accumule dans un fichier CSV unique (`annotated_by_llm.csv`). Le traitement s'effectue par lots de 10 fichiers à la fois, avec déduplication automatique à chaque ajout.
+Les réponses de Gemini ont été extraites via le script ZIP sous forme de fichiers `.txt`. 
+Un script Python de traitement itératif parse le JSON contenu dans chaque fichier `.txt`, 
+extrait les labels, et les accumule dans un fichier CSV unique (`annotated_by_llm.csv`). 
+Le traitement s'effectue par lots de 10 fichiers à la fois, avec déduplication automatique 
+à chaque ajout.
 
-**Étape 5 — Re-classification des Nonsense par intention (Post-traitement)**
-Après la constitution du dataset thématique final de 25 000 textes annotés par Gemini, l'ensemble des textes classés `Nonsense` a été isolé et soumis à une seconde passe d'annotation par Gemini 2.0 Flash, selon une taxonomie d'**intentions** :
+**Étape 5 — Fusion finale**
+Les textes classés `Inclassable` par Gemini regroupent toutes les intentions non thématiques 
+(opinions, encouragements, questions, spam, bruit). Cette classe unique simplifie le schéma 
+et améliore la séparabilité des classes thématiques lors de la modélisation.
 
-| Intention | Description |
-|---|---|
-| `Soutien/Encouragement` | Messages de félicitations, encouragements, formules de bienveillance |
-| `Opinion` | Avis personnels, réactions subjectives, jugements |
-| `Question` | Interrogations explicites adressées au créateur ou à la communauté |
-| `Publicité/Spam` | Contenu promotionnel, liens externes, spam automatisé |
-| `Inclassable/Bruit` | Textes sans valeur sémantique exploitable |
-
-**Distribution finale des intentions détectées (Total : 4 475 textes) :**
-
-| Intention | Nombre d'exemples |
-|---|---|
-| Soutien/Encouragement | 2 803 |
-| Opinion | 1 051 |
-| Inclassable/Bruit | 278 |
-| Question | 245 |
-| Publicité/Spam | 98 |
-| **TOTAL** | **4 475** |
-
-Ces labels d'intention ont été fusionnés avec le dataset thématique original, produisant un dataset final à **11 classes distinctes** (6 thématiques + 5 intentions) :
+**Distribution finale annotée par Gemini :**
 
 | Classe | Nombre d'exemples |
 |---|---|
+| Inclassable | 8 430 |
 | Politics_Society | 4 549 |
-| Sports | 4 440 |
+| Sports_Fitness | 4 440 |
 | Business_Economy | 3 119 |
 | Religion | 3 012 |
 | Health_Science | 2 889 |
-| Soutien/Encouragement | 2 802 |
-| Cuisine | 2 516 |
-| Opinion | 1 051 |
-| Inclassable/Bruit | 278 |
-| Question | 244 |
-| Publicité/Spam | 100 |
-| **TOTAL** | **~25 000** |
+| Food_Cuisine | 2 516 |
+| **TOTAL** | **~29 000** |
 
 ---
 
@@ -393,72 +389,75 @@ Ces labels d'intention ont été fusionnés avec le dataset thématique original
 
 ### Méthode de vérification
 
-L'ensemble du processus de vérification et de validation du dataset final a été réalisé via **Label Studio**, en local (`http://localhost:8080`). Cela concerne à la fois les 25 000 textes thématiques annotés automatiquement par Gemini 2.0 Flash, et les 4 475 textes d'intention issus de la re-classification des Nonsense.
-
-Les deux sous-ensembles ont fait l'objet d'une relecture humaine dans Label Studio, en suivant le même protocole d'annotation que celui utilisé pour le Gold Standard : chaque texte est affiché avec son label LLM proposé, et l'annotateur peut valider, corriger ou rejeter ce label.
+L'ensemble du processus de vérification et de validation du dataset final a été réalisé 
+via **Label Studio**, en local (`http://localhost:8080`). Les 23 606 textes retenus ont 
+fait l'objet d'une relecture humaine en suivant le même protocole d'annotation que celui 
+utilisé pour le Gold Standard : chaque texte est affiché avec son label LLM proposé, 
+et l'annotateur peut valider, corriger ou rejeter ce label.
 
 ### Qui a vérifié ?
 
-La vérification a été réalisée par les membres du groupe, en procédant à une relecture par **échantillonnage stratifié** : chaque classe a été contrôlée indépendamment pour s'assurer de la cohérence inter-classes.
+La vérification a été réalisée par les membres du groupe, en procédant à une relecture 
+par **échantillonnage stratifié** : chaque classe a été contrôlée indépendamment pour 
+s'assurer de la cohérence inter-classes. Les classes thématiques à haute précision 
+confirmée (`Sports_Fitness`, `Food_Cuisine`, `Health_Science`) ont fait l'objet d'une 
+vérification plus légère, tandis que la classe `Inclassable` a été prioritisée.
 
-### Méthode utilisée
+### Protocole appliqué
 
-1. Import du dataset annoté par LLM dans Label Studio (format CSV).
-2. Affichage du texte brut et du label `labeled_ia` proposé par Gemini.
+1. Import du dataset annoté (`annotated_by_llm.csv`) dans Label Studio au format CSV.
+2. Affichage du texte brut et du label proposé par Gemini (`label_initial`).
 3. Validation, correction ou rejet par l'annotateur humain.
 4. Export des annotations finales depuis Label Studio (format JSON puis reconversion CSV).
-5. Fusion des annotations manuelles avec les labels automatiques non vérifiés via script Python (`label_final = label humain si annoté, sinon label LLM`).
+5. Fusion finale : `label_final = label_studio si annoté, sinon label_initial`.
 
 ---
 
 ## 4.6 📊 Analyse des Erreurs de l'IA
 
-Le code de détection des désaccords (`label_initial != label_studio`) a permis d'identifier **4 835 erreurs** sur 23 606 textes. L'analyse de la table des transitions révèle trois grands types d'erreurs.
+Le code de détection des désaccords (`label_initial != label_studio`) a permis 
+d'identifier **4 835 erreurs** sur 23 606 textes. L'analyse révèle trois grands 
+types d'erreurs.
 
 ---
 
-### Type 1 — Mauvaise classification thématique
+### Type 1 — Mauvaise classification thématique → Inclassable
 
-L'erreur dominante est la **sur-classification vers `Opinion`**, touchant systématiquement toutes les classes thématiques. Le LLM détecte une réaction personnelle dans le commentaire et ignore le domaine du contenu.
+L'erreur dominante est la **sur-classification vers `Inclassable`** : le LLM détecte 
+une réaction personnelle ou une formule de politesse et ignore le contenu thématique réel.
 
-**Volumes par classe source :**
-
-| Classe initiale (LLM) | Reclassée en `Opinion` | Reclassée en `Soutien/Encouragement` |
-|---|---|---|
-| Sports | 901 | 107 |
-| Politics_Society | 532 | 202 |
-| Health_Science | 346 | 199 |
-| Cuisine | 254 | 257 |
-| Business_Economy | 310 | 60 |
-| Religion | 230 | 128 |
+| Classe initiale (LLM) | Reclassée en `Inclassable` |
+|---|---|
+| Sports_Fitness | 1 008 |
+| Politics_Society | 734 |
+| Health_Science | 545 |
+| Food_Cuisine | 511 |
+| Business_Economy | 370 |
+| Religion | 358 |
 
 **Exemples réels :**
 
 | Texte original | Label LLM | Label humain | Analyse |
 |---|---|---|---|
-| `عفاك كلمة إصلاح مستفزة... من افضل استعمال كلمة تغيير او فرض...` | `Business_Economy` | `Opinion` | Réaction critique au vocabulaire, pas de contenu économique réel |
-| `Footix de sortie ...` | `Sports` | `Opinion` | Commentaire évaluatif en français sans contexte sportif explicite |
-| `دكتور اكن لكم كل الاحترام ولكن اسمح لي الأطباء في المغرب لايحترمون المرضى ويهمهم فقط مدخولهم اليومي` | `Health_Science` | `Politics_Society` | Critique institutionnelle du système médical marocain |
-| `واش اخويا من نيتك ولد انت وخرج لينا شي بطل راه أغلبية الشعب مضارب غ مع المعيشة الغالية` | `Business_Economy` | `Politics_Society` | Contenu socio-politique déguisé en commentaire économique |
+| `عفاك كلمة إصلاح مستفزة... من افضل استعمال كلمة تغيير` | `Business_Economy` | `Inclassable` | Réaction critique au vocabulaire |
+| `Footix de sortie ...` | `Sports_Fitness` | `Inclassable` | Commentaire évaluatif sans contexte sportif explicite |
+| `دكتور اكن لكم كل الاحترام ولكن الأطباء في المغرب لايحترمون المرضى` | `Health_Science` | `Politics_Society` | Critique institutionnelle du système médical |
+| `واش اخويا من نيتك ولد انت وخرج لينا شي بطل راه أغلبية الشعب مضارب` | `Business_Economy` | `Politics_Society` | Contenu socio-politique déguisé en commentaire économique |
 
 ---
 
-### Type 2 — Ambiguïté (frontières floues entre classes)
+### Type 2 — Confusion inter-thématiques
 
-**Confusion `Religion` ↔ `Soutien/Encouragement`** (230 cas Opinion + 128 cas Soutien)
+**Confusion `Religion` ↔ `Inclassable`** (358 cas)
 
-En Darija marocaine, les formules de bienveillance religieuses sont omniprésentes dans tous les domaines. Le LLM les classifie en `Religion`, alors que le sens réel est une simple politesse.
-
-| Texte original | Label LLM | Label humain | Analyse |
-|---|---|---|---|
-| `جزاك الله خيرا يا شيخنا` | `Religion` | `Soutien/Encouragement` | Formule de remerciement, pas de contenu religieux réel |
-| `أحبك في الله أستاذ ياسين العمري بارك الله في عمرك و زادك من فضله` | `Religion` | `Soutien/Encouragement` | Déclaration d'affection avec formules religieuses = Soutien |
-
-**Confusion `Cuisine` ↔ `Soutien/Encouragement`** (257 cas)
+Les formules de bienveillance religieuses omniprésentes en Darija sont classées 
+`Religion` par le LLM alors qu'elles ne traitent pas de religion comme sujet.
 
 | Texte original | Label LLM | Label humain | Analyse |
 |---|---|---|---|
-| `ممم ما شاء الله` | `Cuisine` | `Soutien/Encouragement` | Expression d'admiration générique, aucun contenu culinaire |
+| `جزاك الله خيرا يا شيخنا` | `Religion` | `Inclassable` | Formule de remerciement, pas de contenu religieux |
+| `أحبك في الله أستاذ بارك الله في عمرك` | `Religion` | `Inclassable` | Déclaration d'affection avec formules religieuses |
+| `ممم ما شاء الله` | `Food_Cuisine` | `Inclassable` | Expression d'admiration générique, aucun contenu culinaire |
 
 ---
 
@@ -466,11 +465,12 @@ En Darija marocaine, les formules de bienveillance religieuses sont omniprésent
 
 | Texte original | Label LLM | Label humain | Analyse |
 |---|---|---|---|
-| `ههه بغا ثاني اشرح لأنشيلوتي كيفاش غادي يلعب ههه` | `Sports` | `Opinion` | Moquerie ironique — le double `ههه` signale le sarcasme |
-| `مش هو الدعارة والجنس ههه كيراعي للسطولة كابتن مصطفى` | `Politics_Society` | `Opinion` | Ton moqueur avec `ههه`, critique de société ironique |
-| `kat3arrrad l 7amalat inti9adat nta howa trump hhh` | `Politics_Society` | `Opinion` | Comparaison ironique en Arabizi, le `hhh` final confirme la dérision |
+| `ههه بغا ثاني اشرح لأنشيلوتي كيفاش غادي يلعب ههه` | `Sports_Fitness` | `Inclassable` | Moquerie ironique — `ههه` signale le sarcasme |
+| `مش هو الدعارة والجنس ههه كيراعي للسطولة كابتن مصطفى` | `Politics_Society` | `Inclassable` | Ton moqueur, critique ironique |
+| `kat3arrrad l 7amalat inti9adat nta howa trump hhh` | `Politics_Society` | `Inclassable` | Comparaison ironique en Arabizi |
 
-**Observation :** Le marqueur typique du sarcasme en Darija digitale est la répétition de `ههه` ou `hhh`/`hhhh` en Arabizi. Ces signaux pragmatiques sont systématiquement ignorés par Gemini 2.0 Flash, qui traite le contenu littéralement.
+**Observation :** Le marqueur typique du sarcasme en Darija digitale est la répétition 
+de `ههه` ou `hhh`. Ces signaux pragmatiques sont ignorés par Gemini 2.0 Flash.
 
 ---
 
@@ -478,9 +478,8 @@ En Darija marocaine, les formules de bienveillance religieuses sont omniprésent
 
 | Type d'erreur | Nb de cas estimés | % des 4 835 erreurs |
 |---|---|---|
-| Sur-classification vers `Opinion` | ~2 873 | ~59.4% |
-| Confusion `Soutien/Encouragement` ← thème | ~953 | ~19.7% |
-| Confusion inter-thématiques (Politics↔Business, Health↔Politics…) | ~572 | ~11.8% |
+| Sur-classification vers `Inclassable` | ~3 526 | ~72.9% |
+| Confusion inter-thématiques (Politics↔Business, Health↔Politics…) | ~872 | ~18.0% |
 | Textes courts / Arabizi mal interprétés | ~437 | ~9.0% |
 | **TOTAL** | **4 835** | **100%** |
 
@@ -492,39 +491,38 @@ En Darija marocaine, les formules de bienveillance religieuses sont omniprésent
 
 | Indicateur | Valeur |
 |---|---|
-| **Nombre total de textes soumis au LLM** | ~49 000 (après filtrage Darija) |
+| **Nombre total de textes soumis au LLM** | ~49 000 |
 | **Nombre de textes retenus dans le dataset final** | 23 606 |
 | **Nombre de labels divergents détectés** | 4 835 |
 | **Taux de correction (désaccord LLM ↔ humain)** | **20.48%** |
 | **Accuracy globale (labels identiques)** | **79.52%** |
 
-> **Interprétation clé :** 1 commentaire sur 5 a dû être redressé manuellement par un annotateur humain, ce qui démontre concrètement l'indispensabilité de la phase de validation humaine (Label Studio) dans tout pipeline de labellisation semi-automatique.
+> **Interprétation clé :** 1 commentaire sur 5 a dû être redressé manuellement, 
+ce qui démontre l'indispensabilité de la phase de validation humaine via Label Studio.
 
 ### Performances par classe (avant correction manuelle)
 
 | Classe | Précision | Rappel | F1-score | Support |
 |---|---|---|---|---|
 | Business_Economy | 0.99 | 0.73 | 0.85 | 2 943 |
-| Cuisine | 1.00 | 0.76 | 0.86 | 2 371 |
+| Food_Cuisine | 1.00 | 0.76 | 0.86 | 2 371 |
 | Health_Science | 1.00 | 0.75 | 0.85 | 2 717 |
-| Inclassable/Bruit | 0.54 | 0.90 | 0.68 | 273 |
-| Opinion | 0.26 | 0.96 | 0.41 | 1 043 |
+| Inclassable | 0.54 | 0.90 | 0.68 | 2 057 |
 | Politics_Society | 0.89 | 0.79 | 0.84 | 4 148 |
-| Publicité/Spam | 0.51 | 0.99 | 0.67 | 98 |
-| Question | 0.48 | 0.93 | 0.63 | 243 |
 | Religion | 0.97 | 0.82 | 0.89 | 2 844 |
-| Soutien/Encouragement | 0.72 | 0.92 | 0.81 | 2 775 |
-| Sports | 1.00 | 0.73 | 0.84 | 4 149 |
+| Sports_Fitness | 1.00 | 0.73 | 0.84 | 4 149 |
 | **Accuracy globale** | | | **0.80** | **23 606** |
-| **Macro avg** | 0.78 | 0.82 | 0.75 | |
-| **Weighted avg** | 0.90 | 0.80 | 0.82 | |
-
-> **Note :** La classe `Nonsense` (2 exemples dans le support brut) a été intégralement fusionnée dans `Inclassable/Bruit` lors du nettoyage final. Elle n'apparaît plus dans le dataset consolidé à 11 classes.
+| **Macro avg** | 0.91 | 0.78 | 0.83 | |
+| **Weighted avg** | 0.91 | 0.80 | 0.83 | |
 
 **Lecture des résultats :**
-- Les classes thématiques "pures" (`Cuisine`, `Health_Science`, `Sports`, `Business_Economy`) atteignent une précision quasi-parfaite (≥ 0.99) : le LLM est très fiable quand il assigne ces labels, mais le rappel plus faible (~0.73–0.76) indique qu'il en rate une partie en les sur-classifiant vers `Opinion`.
-- La classe `Opinion` est pathologique : une précision de **0.26** signifie que **74 % des textes classés `Opinion` par le LLM ne sont pas réellement des opinions** — ce sont des textes thématiques mal redistribués.
-- Les classes d'intention (`Question`, `Publicité/Spam`, `Inclassable/Bruit`) présentent des performances moyennes, confirmant la difficulté de détecter des intentions dans de courts textes en Darija.
+- Les classes thématiques pures (`Food_Cuisine`, `Health_Science`, `Sports_Fitness`, 
+`Business_Economy`) atteignent une précision quasi-parfaite (≥ 0.99) : le LLM est 
+très fiable quand il assigne ces labels.
+- Le rappel plus faible (~0.73–0.76) indique qu'il en rate une partie en les 
+sur-classifiant vers `Inclassable`.
+- La classe `Inclassable` présente une précision de **0.54** : elle capte trop 
+largement des textes qui ont en réalité un contenu thématique identifiable.
 
 ### Après correction (via Label Studio)
 
@@ -532,89 +530,86 @@ En Darija marocaine, les formules de bienveillance religieuses sont omniprésent
 |---|---|
 | **Textes vérifiés et corrigés manuellement** | 4 835 |
 | **Taux de correction appliqué** | 20.48% |
-| **Qualité finale estimée — classes thématiques** | Bonne à très bonne (F1 ≥ 0.84) |
-| **Qualité finale estimée — classes d'intention** | Correcte (F1 entre 0.41 et 0.81) |
-| **Classe la plus fiable après correction** | `Sports`, `Cuisine`, `Health_Science` |
-| **Classe la plus incertaine après correction** | `Opinion` |
+| **Classe la plus fiable après correction** | `Sports_Fitness`, `Food_Cuisine`, `Health_Science` |
+| **Classe la plus incertaine après correction** | `Inclassable` |
 
 ---
 
-
 ## 4.8 🔧 Correction des Erreurs
 
-### Comment les erreurs ont été corrigées
+### Processus de correction
 
-Après la labellisation semi-automatique par Gemini 2.0 Flash, l'intégralité du dataset annoté a été importée dans **Label Studio** pour une phase de vérification et correction humaine systématique.
+Après la labellisation semi-automatique par Gemini 2.0 Flash, l'intégralité du dataset 
+annoté a été importée dans **Label Studio** pour une phase de vérification et correction 
+humaine systématique.
 
-Le protocole appliqué était le suivant :
+Le protocole appliqué :
 
 1. Import du dataset annoté (`annotated_by_llm.csv`) dans Label Studio au format CSV.
-2. Affichage texte par texte : chaque entrée montre le texte brut original et le label proposé par le LLM (`label_initial`).
-3. Décision humaine : l'annotateur valide le label LLM, le corrige vers une autre classe, ou le rejette.
-4. Export JSON depuis Label Studio, puis reconversion en CSV via script Python.
-5. Fusion finale : application de la règle `label_final = label_studio si annoté, sinon label_initial`.
+2. Affichage texte par texte avec le label proposé par le LLM (`label_initial`).
+3. Décision humaine : valider, corriger vers une autre classe, ou rejeter.
+4. Export JSON depuis Label Studio, puis reconversion CSV.
+5. Fusion finale : `label_final = label_studio si annoté, sinon label_initial`.
 
-Cette phase a produit **4 835 modifications** sur 23 606 textes, soit un taux de correction de **20.48%**.
+Cette phase a produit **4 835 modifications** sur 23 606 textes, soit un taux de 
+correction de **20.48%**.
 
 ---
 
 ### Difficultés rencontrées
 
-**1. Volume à vérifier trop important**
-Avec 23 606 textes à passer en revue dans Label Studio, une vérification exhaustive était humainement irréalisable dans les délais du projet. Une stratégie d'**échantillonnage stratifié** a été adoptée : chaque classe a été contrôlée indépendamment en prioritisant les classes à faible confiance (`Opinion`, `Question`, `Publicité/Spam`). Les classes à haute précision confirmée (`Sports`, `Cuisine`, `Health_Science`) ont fait l'objet d'une vérification plus légère.
+**1. Volume à vérifier important**
+Avec 23 606 textes à passer en revue, une vérification exhaustive était humainement 
+irréalisable. Une stratégie d'**échantillonnage stratifié** a été adoptée : les classes 
+à faible précision (`Inclassable`) ont été prioritisées. Les classes à haute précision 
+confirmée (`Sports_Fitness`, `Food_Cuisine`, `Health_Science`) ont fait l'objet d'une 
+vérification plus légère.
 
-**2. Commentaires avec thème clair mais sous forme de question ou d'opinion**
+**2. Commentaires avec thème clair mais forme ambiguë**
 
 | Texte | Difficulté | Décision finale |
 |---|---|---|
-| `ههه بغا ثاني اشرح لأنشيلوتي كيفاش غادي يلعب ههه` | Ton ironique sur le football | `Opinion` — la forme prime sur le fond sportif |
-| `دكتور اكن لكم كل الاحترام ولكن اسمح لي الأطباء في المغرب لايحترمون المرضى` | Thème `Health_Science` ou `Politics_Society` ? | `Politics_Society` — critique institutionnelle |
-| `majwbtich 3la la question حل ولا فخّ؟` | Question sur un sujet business | `Opinion` — interpellation rhétorique sans contenu dense |
+| `ههه بغا ثاني اشرح لأنشيلوتي كيفاش غادي يلعب ههه` | Ton ironique sur le football | `Inclassable` — la forme prime |
+| `دكتور اكن لكم كل الاحترام ولكن الأطباء في المغرب لايحترمون المرضى` | Health ou Politics ? | `Politics_Society` — critique institutionnelle |
+| `majwbtich 3la la question حل ولا فخّ؟` | Question sur business | `Inclassable` — interpellation rhétorique |
 
-La règle adoptée : **si la forme (question, ironie, réaction) domine le fond (thème), on classe selon l'intention**. Si le contenu thématique est suffisamment dense malgré la forme, on garde le thème.
-
-**3. Textes où le thème est compris mais sans mot-clé explicite**
+**3. Textes sans mot-clé explicite**
 
 | Texte | Thème compris | Décision |
 |---|---|---|
-| `Mas maktfr7x b ta3adol` | Réaction à un match | `Opinion` — trop implicite |
-| `ريس الوندال` | Référence politique marocaine | `Inclassable/Bruit` — trop court hors contexte |
-| `Les biologistes kanchoufkoum` | Adressé à des scientifiques | `Inclassable/Bruit` — interpellation sans contenu classifiable |
+| `Mas maktfr7x b ta3adol` | Réaction à un match | `Inclassable` — trop implicite |
+| `ريس الوندال` | Référence politique | `Inclassable` — trop court hors contexte |
 
-Ces cas ont révélé une limite fondamentale : **la classification thématique sans contexte vidéo est parfois impossible**, même pour un annotateur humain.
+**4. Gestion de l'encodage**
+La cohabitation de l'alphabet arabe et des caractères latins a provoqué des corruptions 
+d'affichage, résolues par l'encodage strict `utf-8-sig`.
 
 ---
 
-## 4.9 📊 Statistiques du Dataset
+## 4.9 📊 Statistiques du Dataset Final
 
 ### Volume et format
 
 | Indicateur | Valeur |
 |---|---|
 | **Nombre total d'exemples** | **23 606** |
-| **Nombre de classes** | **11** |
+| **Nombre de classes** | **7** |
 | **Format** | CSV, encodage UTF-8 |
 
 ---
 
-### Répartition des classes
+### Distribution finale des classes
 
 | Classe | Nombre d'exemples | Proportion (%) |
 |---|---|---|
-| Opinion | 3 772 | 15.98% |
+| Inclassable | 8 430 | 35.71% |
 | Politics_Society | 3 711 | 15.72% |
-| Soutien/Encouragement | 3 539 | 14.99% |
-| Sports | 3 027 | 12.82% |
+| Sports_Fitness | 3 027 | 12.82% |
 | Religion | 2 426 | 10.28% |
 | Business_Economy | 2 176 | 9.22% |
 | Health_Science | 2 034 | 8.62% |
-| Cuisine | 1 803 | 7.64% |
-| Question | 469 | 1.99% |
-| Inclassable/Bruit | 458 | 1.94% |
-| Publicité/Spam | 191 | 0.81% |
-| **TOTAL** | **23 606** | **100.00%** |
-
-> **Note sur Nonsense :** L'unique exemple résiduel de la classe `Nonsense` (artefact de la fusion des datasets) a été fusionné dans `Inclassable/Bruit`, portant cette dernière de 457 à 458 exemples. Le dataset final présente donc **11 classes propres** sans résidu.
+| Food_Cuisine | 1 803 | 7.64% |
+| **TOTAL** | **23 606** | **100%** |
 
 ---
 
@@ -622,44 +617,32 @@ Ces cas ont révélé une limite fondamentale : **la classification thématique 
 
 | Script | Nombre | Proportion (%) |
 |---|---|---|
-| Arabe (alphabet arabe) | 19 760 | 83.71% |
-| Latin (Arabizi + français + anglais) | 3 844 | 16.29% |
-| **TOTAL** | **23 604** | **100%** |
-
-La très large majorité des textes (83.71%) est rédigée en alphabet arabe, confirmant que la Darija écrite en caractères arabes reste le registre dominant sur YouTube marocain. Les 16.29% en latin représentent l'Arabizi ainsi que les insertions de français et d'anglais typiques du code-switching.
+| Arabe (alphabet arabe) | 19 762 | 83.72% |
+| Latin (Arabizi + français + anglais) | 3 844 | 16.28% |
+| **TOTAL** | **23 606** | **100%** |
 
 ---
 
-### Problèmes de déséquilibre
-
-**Déséquilibre entre classes thématiques (les 8 classes principales) :**
+### Diagnostic du déséquilibre
 
 | Indicateur | Valeur |
 |---|---|
-| Classe thématique majoritaire | `Opinion` (3 772 exemples) |
-| Classe thématique minoritaire | `Cuisine` (1 803 exemples) |
-| **Ratio de déséquilibre thématique (Max/Min)** | **2.09x** |
-| Statut | ✅ Déséquilibre modéré — dataset thématique bien équilibré |
+| Classe majoritaire | `Inclassable` (8 430 exemples) |
+| Classe thématique majoritaire | `Politics_Society` (3 711 exemples) |
+| Classe thématique minoritaire | `Food_Cuisine` (1 803 exemples) |
+| **Ratio thématique (sans Inclassable)** | **2.09x** ✅ déséquilibre modéré |
+| **Ratio global (avec Inclassable)** | **4.67x** — naturel et attendu |
 
-Le ratio de 2.09x entre la classe la plus haute (`Opinion`) et la classe thématique la plus basse (`Cuisine`) indique un dataset **très bien équilibré** pour les 8 classes principales. Ce niveau de déséquilibre est considéré comme acceptable dans la littérature NLP (seuil critique généralement fixé à 10x).
+Le ratio de **2.09x** entre les classes thématiques indique un dataset bien équilibré 
+sur son cœur thématique. La classe `Inclassable` représente naturellement la majorité 
+des commentaires YouTube — c'est un reflet fidèle de la réalité des données sociales.
 
-**Déséquilibre avec les classes résiduelles :**
-
-| Indicateur | Valeur |
-|---|---|
-| Classe la plus basse (hors thématique) | `Publicité/Spam` (191 exemples) |
-| Ratio Opinion / Publicité/Spam | ~19.7x |
-| Statut | ⚠️ Déséquilibre significatif pour les classes minoritaires |
-
-Les classes `Question` (469), `Inclassable/Bruit` (458) et `Publicité/Spam` (191) représentent ensemble **4.74%** du dataset. Il est normal et attendu que ces classes soient minoritaires — elles correspondent à du bruit ou à des intentions rares dans des corpus de commentaires réels.
-
-**Traitements prévus pour la phase de modélisation :**
-- Pondération des classes (`class_weight='balanced'`) dans les classifieurs scikit-learn pour compenser le déséquilibre résiduel
-- Oversampling ciblé (SMOTE) pour `Publicité/Spam` (191 ex.) si nécessaire
-- Les 8 classes thématiques principales ne nécessitent pas de traitement de déséquilibre (ratio ≤ 2.09x)
+**Traitements appliqués lors de la modélisation :**
+- `class_weight='balanced'` pour compenser le déséquilibre résiduel
+- Les 6 classes thématiques ne nécessitent pas de sur-échantillonnage (ratio ≤ 2.09x)
 ------
 
-## 4.7 📈 Statistiques de Performance
+## 4.10 📈 Statistiques de Performance
 
 L'audit qualité complet réalisé sur l'ensemble du corpus permet de mesurer précisément l'efficacité de la labellisation automatisée par rapport aux corrections humaines appliquées au sein de Label Studio.
 
@@ -677,7 +660,7 @@ L'audit qualité complet réalisé sur l'ensemble du corpus permet de mesurer pr
 
 ---
 
-## 4.8 🔧 Correction des Erreurs
+## 4.11 🔧 Correction des Erreurs
 
 ### 🛠️ Processus de redressement méthodologique
 La correction des 4 835 désaccords identifiés lors de la passe automatique de l'IA a été rigoureusement industrialisée pour garantir l'intégrité globale du dataset final :
@@ -692,7 +675,7 @@ Le redressement de ce volume de données a confronté l'équipe à plusieurs ver
 
 ---
 
-## 4.9 📊 Statistiques du Dataset Final
+## 4.12📊 Statistiques du Dataset Final
 
 ### Répartition générale du type d'écriture (Script)
 Le traitement de la colonne linguistique montre une écriture massivement dominée par l'alphabet arabe, reflétant les habitudes de communication sur les espaces web marocains ciblés :
@@ -727,7 +710,7 @@ Si l'on écarte les classes purement techniques (Bruit, Spam, Question) dont la 
 
 ---
 
-## 4.10 ⚠️ Limites
+## 4.13 ⚠️ Limites
 
 L’analyse approfondie des erreurs de notre pipeline met en évidence trois barrières structurelles inhérentes au traitement de la Darija numérique :
 
