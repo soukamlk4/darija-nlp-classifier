@@ -1,0 +1,157 @@
+// ==UserScript==
+// @name         Gemini Sidebar Extractor to ZIP (Updated)
+// @namespace    http://tampermonkey.net/
+// @version      1.4
+// @description  Extracts Gemini responses, with stop button capability
+// @match        https://gemini.google.com/app*
+// @match        https://gemini.google.com/*
+// @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js
+// @grant        none
+// ==/UserScript==
+
+/* global JSZip */
+
+(function() {
+    'use strict';
+
+    let isExtracting = false;
+    let cancelRequested = false;
+
+    // Wait for page to fully load
+    window.addEventListener('load', () => {
+        createButton();
+    });
+
+    // Also try after a delay
+    setTimeout(createButton, 2000);
+
+    function createButton() {
+        // Check if button already exists
+        if (document.getElementById('gemini-extract-btn')) return;
+
+        const btn = document.createElement('button');
+        btn.id = 'gemini-extract-btn';
+        btn.innerText = '📦 Extract to ZIP';
+        btn.style.position = 'fixed';
+        btn.style.bottom = '80px';  // Changed from 20px to avoid overlap
+        btn.style.right = '20px';
+        btn.style.zIndex = '999999';  // Higher z-index
+        btn.style.padding = '12px 20px';
+        btn.style.backgroundColor = '#1a73e8';
+        btn.style.color = 'white';
+        btn.style.border = 'none';
+        btn.style.borderRadius = '8px';
+        btn.style.cursor = 'pointer';
+        btn.style.boxShadow = '0 4px 6px rgba(0,0,0,0.3)';
+        btn.style.fontWeight = 'bold';
+        btn.style.fontFamily = 'Arial, sans-serif';
+        btn.style.fontSize = '14px';
+
+        btn.addEventListener('click', extractChats);
+        document.body.appendChild(btn);
+        console.log('✅ Extract button added to page');
+    }
+
+    async function extractChats() {
+        const sidebar = document.querySelector('nav, [role="navigation"], .conversation-list');
+if (sidebar) {
+    sidebar.scrollTop = 0;
+    await new Promise(resolve => setTimeout(resolve, 1000));
+}
+        if (isExtracting) {
+            cancelRequested = true;
+            const btn = document.getElementById('gemini-extract-btn');
+            btn.innerText = '⏹️ Stopping...';
+            btn.disabled = true;
+            btn.style.backgroundColor = '#5f6368';
+            return;
+        }
+
+        isExtracting = true;
+        cancelRequested = false;
+        const btn = document.getElementById('gemini-extract-btn');
+        btn.innerText = '⏹️ Stop & Save';
+        btn.style.backgroundColor = '#ea4335';
+
+        const zip = new JSZip();
+
+        // Try multiple possible selectors for chat links
+        let chatLinks = document.querySelectorAll('a[href*="/app/"], a.conversation, [role="link"], .chat-link');
+
+        // If still no chats, look for any clickable chat items
+        if (chatLinks.length === 0) {
+            chatLinks = document.querySelectorAll('[data-test-id*="chat"], [data-testid*="conversation"]');
+        }
+
+        if (chatLinks.length === 0) {
+            alert("❌ No sidebar chats found. Please make sure:\n1. You're on the main Gemini page\n2. The sidebar is visible (click the menu icon ☰ if needed)\n3. You have existing conversations");
+            resetButton();
+            return;
+        }
+
+        console.log(`Found ${chatLinks.length} chats to extract`);
+
+        for (let i = 0; i < chatLinks.length; i++) {
+            if (cancelRequested) {
+                console.log("Extraction stopped by user.");
+                break;
+            }
+
+            const link = chatLinks[i];
+
+            // Get title
+            let rawTitle = link.innerText?.trim() || `Chat_${i + 1}`;
+            let safeTitle = rawTitle.replace(/[\\/:*?"<>|\n\r]/g, '_').substring(0, 50);
+            let filename = `${safeTitle}.txt`;
+
+            // Click and wait
+            link.click();
+            await new Promise(resolve => setTimeout(resolve, 5000));
+
+            // Try multiple selectors for AI responses
+            let aiResponses = document.querySelectorAll('message-content .markdown-main-panel, [data-message-author-role="model"], .model-response');
+
+            let chatText = `=== CHAT: ${rawTitle} ===\n\n`;
+
+            if (aiResponses.length === 0) {
+                chatText += "(No response found)\n";
+            } else {
+                aiResponses.forEach((response, idx) => {
+                    chatText += `[Response ${idx + 1}]:\n${response.innerText.trim()}\n\n---\n\n`;
+                });
+            }
+
+            zip.file(filename, chatText);
+            console.log(`✅ Added: ${filename}`);
+        }
+
+        if (Object.keys(zip.files).length === 0) {
+            alert("No chats were extracted.");
+            resetButton();
+            return;
+        }
+
+        btn.innerText = '📦 Creating ZIP...';
+
+        zip.generateAsync({ type: "blob" }).then(content => {
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(content);
+            link.download = `Gemini_Chats_${new Date().toISOString().slice(0,19)}.zip`;
+            link.click();
+            URL.revokeObjectURL(link.href);
+            resetButton();
+            alert(`✅ Extracted ${Object.keys(zip.files).length} chats!`);
+        });
+    }
+
+    function resetButton() {
+        isExtracting = false;
+        cancelRequested = false;
+        const btn = document.getElementById('gemini-extract-btn');
+        if (btn) {
+            btn.disabled = false;
+            btn.innerText = '📦 Extract to ZIP';
+            btn.style.backgroundColor = '#1a73e8';
+        }
+    }
+})();
